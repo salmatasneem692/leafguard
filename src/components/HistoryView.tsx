@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { SavedAnalysisSession } from '../services/historyStorage.ts';
 import { generateAcademicPdfReport } from '../services/pdfReportGenerator.ts';
+import { HistoryHealthTrendChart } from './HistoryHealthTrendChart.tsx';
 import { 
   History, 
   Trash2, 
@@ -201,6 +202,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Health Condition Distribution Trend Chart (Last 30 Sessions) */}
+      {sessions.length > 0 && (
+        <HistoryHealthTrendChart
+          sessions={sessions}
+          onSelectSession={onSelectSession}
+        />
+      )}
 
       {/* Longitudinal Health Tracking View */}
       {viewMode === 'longitudinal' && (

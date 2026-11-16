@@ -1,13 +1,24 @@
-import React from 'react';
-import { Leaf, Cpu, BookOpen, BarChart3, Info, History } from 'lucide-react';
+import React, { useState } from 'react';
+import { Cpu, Menu, X } from 'lucide-react';
+
+export type NavTabId = 'home' | 'dashboard' | 'identify' | 'disease' | 'library' | 'about';
 
 interface NavbarProps {
-  activeTab: 'analyzer' | 'history' | 'compendium' | 'evaluation' | 'architecture';
-  setActiveTab: (tab: 'analyzer' | 'history' | 'compendium' | 'evaluation' | 'architecture') => void;
+  activeTab: NavTabId;
+  setActiveTab: (tab: NavTabId) => void;
   isDemoMode: boolean;
   onOpenModelModal: () => void;
   historyCount?: number;
 }
+
+const NAV_ITEMS: Array<{ id: NavTabId; label: string }> = [
+  { id: 'home', label: 'Home' },
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'identify', label: 'Plant Identification' },
+  { id: 'disease', label: 'Disease Detection' },
+  { id: 'library', label: 'Plant Library' },
+  { id: 'about', label: 'About' },
+];
 
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
@@ -16,155 +27,138 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenModelModal,
   historyCount = 0,
 }) => {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const handleSelectTab = (tab: NavTabId) => {
+    setActiveTab(tab);
+    setMobileMenuOpen(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200">
+    <header className="sticky top-0 z-40 glass-surface border-b border-[#123D2A]/10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Zone 1: Single text element wordmark with icon */}
+        <div className="flex items-center justify-between gap-6 h-16">
+          {/* Zone 1: Bespoke Leaf + AI Neural Logo & Clean Single-Line Wordmark */}
           <button
-            onClick={() => setActiveTab('analyzer')}
-            className="flex items-center gap-2.5 text-left group"
+            type="button"
+            onClick={() => handleSelectTab('home')}
+            className="flex items-center gap-2.5 text-left group cursor-pointer shrink-0 whitespace-nowrap"
           >
-            <div className="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center shadow-xs group-hover:bg-emerald-700 transition-colors">
-              <Leaf className="w-5 h-5 text-white" />
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#123D2A] to-[#16A36A] text-white flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform">
+              {/* Custom Botanical Leaf + AI Neural Circuit SVG */}
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+                className="text-white"
+              >
+                <path
+                  d="M19 4C12 4 6.5 7.5 5 14C4.5 16.2 5.3 18.5 7 19.8C8.3 20.8 10.2 21 12 20.5C17.5 19 20 13.5 20 6.5V4H19Z"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M6 19C9 15.5 12.5 12 17 8.5"
+                  stroke="#E8F5EC"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                />
+                <circle cx="13" cy="11.5" r="1.5" fill="#E8F5EC" />
+                <circle cx="16.5" cy="8.5" r="1.3" fill="#E8F5EC" />
+                <circle cx="9.5" cy="14.8" r="1.3" fill="#E8F5EC" />
+              </svg>
             </div>
-            <div>
-              <span className="text-lg font-bold tracking-tight text-slate-900 group-hover:text-emerald-700 transition-colors">
-                LeafGuard AI
-              </span>
-              <span className="hidden sm:inline-block ml-2 text-xs text-slate-400 font-mono">
-                ECE-MP·2026
-              </span>
-            </div>
+            <span className="text-lg font-extrabold tracking-tight text-[#123D2A] group-hover:text-[#16A36A] transition-colors whitespace-nowrap">
+              LeafGuard AI
+            </span>
           </button>
 
-          {/* Zone 2: Clean text navigation links */}
-          <nav className="hidden md:flex items-center gap-1 sm:gap-2">
-            <button
-              onClick={() => setActiveTab('analyzer')}
-              className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === 'analyzer'
-                  ? 'text-emerald-700 bg-emerald-50/80 font-semibold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
-              }`}
-            >
-              Analyzer
-            </button>
-            <button
-              onClick={() => setActiveTab('history')}
-              className={`px-3 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 ${
-                activeTab === 'history'
-                  ? 'text-emerald-700 bg-emerald-50/80 font-semibold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
-              }`}
-            >
-              <span>History</span>
-              {historyCount > 0 && (
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 font-bold">
-                  {historyCount}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('compendium')}
-              className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === 'compendium'
-                  ? 'text-emerald-700 bg-emerald-50/80 font-semibold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
-              }`}
-            >
-              Medicinal Plants
-            </button>
-            <button
-              onClick={() => setActiveTab('evaluation')}
-              className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === 'evaluation'
-                  ? 'text-emerald-700 bg-emerald-50/80 font-semibold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
-              }`}
-            >
-              Evaluation & Metrics
-            </button>
-            <button
-              onClick={() => setActiveTab('architecture')}
-              className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === 'architecture'
-                  ? 'text-emerald-700 bg-emerald-50/80 font-semibold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
-              }`}
-            >
-              Architecture & Guide
-            </button>
+          {/* Zone 2: Responsive Single-Line Navigation Links */}
+          <nav className="hidden lg:flex items-center gap-1.5">
+            {NAV_ITEMS.map((item) => {
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => handleSelectTab(item.id)}
+                  className={`px-3 py-2 text-sm font-medium rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                    isActive
+                      ? 'bg-[#E8F5EC] text-[#123D2A] font-semibold'
+                      : 'text-[#18251E]/75 hover:text-[#123D2A] hover:bg-[#E8F5EC]/50'
+                  }`}
+                >
+                  <span>{item.label}</span>
+                  {item.id === 'dashboard' && historyCount > 0 && (
+                    <span className="text-[10px] font-mono font-bold text-[#16A36A] tabular-nums">
+                      ({historyCount})
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </nav>
 
-          {/* Zone 3: Primary action / Model Connection indicator */}
-          <div className="flex items-center gap-2">
-            {/* Offline Edge Mode Badge */}
-            <div 
-              title="Runs on-device client-side inference without cloud dependency"
-              className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800"
+          {/* Zone 3: Primary Model Status Action + Mobile Hamburger */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={onOpenModelModal}
+              title="Inspect ML backend connection status (Flask Keras vs Simulation)"
+              className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl border transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                isDemoMode
+                  ? 'bg-[#E8F5EC] border-[#16A36A]/30 text-[#123D2A] hover:bg-[#d8efe0]'
+                  : 'bg-[#123D2A] border-[#123D2A] text-white hover:bg-[#175138]'
+              }`}
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              <span>Offline Edge Mode Ready</span>
-            </div>
+              <Cpu className={`w-3.5 h-3.5 ${isDemoMode ? 'text-[#16A36A]' : 'text-[#E8F5EC]'}`} />
+              <span>{isDemoMode ? 'Model Status · Demo' : 'Keras Live Connected'}</span>
+            </button>
 
             <button
-              onClick={onOpenModelModal}
-              title="Click to view model loading status and integration guide"
-              className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium border rounded-md transition-all whitespace-nowrap bg-amber-50/80 border-amber-300 text-amber-900 hover:bg-amber-100"
+              type="button"
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+              aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+              className="lg:hidden p-2 rounded-xl border border-[#123D2A]/15 bg-white text-[#123D2A] hover:bg-[#E8F5EC] transition-colors cursor-pointer"
             >
-              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-              <span>{isDemoMode ? 'Demo Mode' : 'Keras Model Loaded'}</span>
-              <Info className="w-3.5 h-3.5 text-amber-700" />
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
         </div>
 
-        {/* Mobile Navigation Row */}
-        <div className="flex md:hidden items-center justify-around py-2 border-t border-slate-100 text-xs">
-          <button
-            onClick={() => setActiveTab('analyzer')}
-            className={`py-1 px-2 rounded font-medium ${
-              activeTab === 'analyzer' ? 'text-emerald-700 bg-emerald-50' : 'text-slate-600'
-            }`}
-          >
-            Analyzer
-          </button>
-          <button
-            onClick={() => setActiveTab('history')}
-            className={`py-1 px-2 rounded font-medium ${
-              activeTab === 'history' ? 'text-emerald-700 bg-emerald-50' : 'text-slate-600'
-            }`}
-          >
-            History {historyCount > 0 ? `(${historyCount})` : ''}
-          </button>
-          <button
-            onClick={() => setActiveTab('compendium')}
-            className={`py-1 px-2 rounded font-medium ${
-              activeTab === 'compendium' ? 'text-emerald-700 bg-emerald-50' : 'text-slate-600'
-            }`}
-          >
-            Plants
-          </button>
-          <button
-            onClick={() => setActiveTab('evaluation')}
-            className={`py-1 px-2 rounded font-medium ${
-              activeTab === 'evaluation' ? 'text-emerald-700 bg-emerald-50' : 'text-slate-600'
-            }`}
-          >
-            Metrics
-          </button>
-          <button
-            onClick={() => setActiveTab('architecture')}
-            className={`py-1 px-2 rounded font-medium ${
-              activeTab === 'architecture' ? 'text-emerald-700 bg-emerald-50' : 'text-slate-600'
-            }`}
-          >
-            Docs
-          </button>
-        </div>
+        {/* Tablet & Mobile Dropdown Navigation */}
+        {mobileMenuOpen && (
+          <nav className="lg:hidden py-3 border-t border-[#123D2A]/10 grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+            {NAV_ITEMS.map((item) => {
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => handleSelectTab(item.id)}
+                  className={`px-3 py-2.5 text-xs font-semibold rounded-lg text-left transition-colors cursor-pointer flex items-center justify-between ${
+                    isActive
+                      ? 'bg-[#123D2A] text-white'
+                      : 'bg-white text-[#18251E] border border-[#123D2A]/10 hover:bg-[#E8F5EC]'
+                  }`}
+                >
+                  <span className="truncate">{item.label}</span>
+                  {item.id === 'dashboard' && historyCount > 0 && (
+                    <span className="font-mono text-[10px] opacity-80 tabular-nums">
+                      {historyCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+        )}
       </div>
     </header>
   );
 };
-

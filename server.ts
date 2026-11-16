@@ -1,9 +1,8 @@
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import { GoogleGenAI } from '@google/genai';
+import type { GoogleGenAI } from '@google/genai';
 
 import fs from 'fs';
 
@@ -13,22 +12,50 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const portArgIndex = process.argv.indexOf('--port');
-const port = portArgIndex !== -1 && process.argv[portArgIndex + 1]
-  ? parseInt(process.argv[portArgIndex + 1], 10)
-  : (process.env.PORT ? parseInt(process.env.PORT, 10) : 3000);
+
+function resolvePort(): number {
+  const eqArg = process.argv.find((a) => a.startsWith('--port='));
+  if (eqArg) {
+    const parsed = parseInt(eqArg.split('=')[1], 10);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  const portArgIndex = process.argv.indexOf('--port');
+  if (portArgIndex !== -1 && process.argv[portArgIndex + 1]) {
+    const parsed = parseInt(process.argv[portArgIndex + 1], 10);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  if (process.env.DEFAULT_APP_PORT) {
+    const parsed = parseInt(process.env.DEFAULT_APP_PORT, 10);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  const envPort = process.env.PORT ? parseInt(process.env.PORT, 10) : NaN;
+  const nginxPort = process.env.NGINX_PORT ? parseInt(process.env.NGINX_PORT, 10) : NaN;
+  if (!Number.isNaN(envPort) && envPort !== nginxPort) {
+    return envPort;
+  }
+  return 3000;
+}
+
+const port = resolvePort();
 
 app.use(express.json({ limit: '10mb' }));
 
-// Initialize GoogleGenAI server-side client with mandatory User-Agent
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    },
-  },
-});
+// Lazy-initialize GoogleGenAI server-side client so missing keys never emit startup stderr errors
+let cachedAiClient: GoogleGenAI | null = null;
+async function getAiClient(): Promise<GoogleGenAI> {
+  if (!cachedAiClient) {
+    const { GoogleGenAI: GenAIClass } = await import('@google/genai');
+    cachedAiClient = new GenAIClass({
+      apiKey: process.env.GEMINI_API_KEY,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
+  }
+  return cachedAiClient;
+}
 
 app.get('/api/ping', (_req, res) => {
   res.json({ pong: true, hasGeminiKey: Boolean(process.env.GEMINI_API_KEY) });
@@ -151,6 +178,7 @@ app.post('/api/transcribe-audio', async (req, res) => {
     }
 
     const cleanMime = mimeType.split(';')[0].trim() || 'audio/webm';
+    const ai = await getAiClient();
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
@@ -246,6 +274,7 @@ Provide your answer in ${detected.langName} (${detected.langCode}):`;
           setTimeout(() => reject(new Error('Gemini API request timed out')), 12000)
         );
 
+        const ai = await getAiClient();
         const response = await Promise.race([
           ai.models.generateContent({
             model: 'gemini-3.8-flash',
@@ -383,6 +412,7 @@ ${isKannada ? 'ದಯವಿಟ್ಟು ಸಂಪೂರ್ಣ ವಿವರಣೆ
           setTimeout(() => reject(new Error('Gemini API request timed out')), 12000)
         );
 
+        const ai = await getAiClient();
         const response = await Promise.race([
           ai.models.generateContent({
             model: 'gemini-3.8-flash',
@@ -489,22 +519,56 @@ In traditional wellness systems, **${speciesName}** is utilized for its natural 
 
 // Setup Vite dev server middlewares or static dist serving
 async function startServer() {
+  let viteInstance: { close: () => Promise<void> } | null = null;
+
   if (process.env.NODE_ENV === 'production') {
     app.use(express.static(path.resolve(__dirname, 'dist')));
     app.get('*', (_req, res) => {
       res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
     });
   } else {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
+    const viteReadyPromise = import('vite').then(({ createServer }) =>
+      createServer({
+        server: {
+          middlewareMode: true,
+          hmr: false,
+          ws: false,
+          watch: null,
+        },
+        appType: 'spa',
+      })
+    ).then((vite) => {
+      viteInstance = vite;
+      return vite;
     });
-    app.use(vite.middlewares);
+
+    app.use(async (req, res, next) => {
+      try {
+        const vite = await viteReadyPromise;
+        vite.middlewares(req, res, next);
+      } catch (err) {
+        next(err);
+      }
+    });
   }
 
-  app.listen(port, '0.0.0.0', () => {
+  const server = app.listen(port, '0.0.0.0', () => {
     console.log(`LeafGuard AI server listening on http://localhost:${port}`);
   });
+
+  const shutdown = async () => {
+    server.close();
+    if (viteInstance) {
+      await viteInstance.close().catch(() => {});
+    }
+    process.exit(0);
+  };
+
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }
 
-startServer();
+startServer().catch((err) => {
+  console.error('Failed to start LeafGuard AI server:', err);
+  process.exit(1);
+});

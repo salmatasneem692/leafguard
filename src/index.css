@@ -1,1 +1,33 @@
 @import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --color-forest-950: #0c291c;
+  --color-forest-900: #123d2a;
+  --color-forest-800: #175138;
+  --color-emerald-brand: #16a36a;
+  --color-mint-soft: #e8f5ec;
+  --color-canvas-warm: #fafcf8;
+  --color-charcoal-deep: #18251e;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    background-color: #fafcf8;
+    color: #18251e;
+  }
+}
+
+.glass-surface {
+  background: rgba(250, 252, 248, 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.glass-forest {
+  background: rgba(18, 61, 42, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
