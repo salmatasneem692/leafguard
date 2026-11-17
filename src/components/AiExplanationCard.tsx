@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { PredictionResult } from '../types/index.ts';
 import { startVoiceRecordingSession, VoiceSessionController } from '../services/voiceInputService.ts';
+import { speakFullText, TtsPlaybackController, TtsProgress } from '../services/ttsService.ts';
 import { 
   Sparkles, 
   Loader2, 
@@ -44,6 +45,7 @@ export const AiExplanationCard: React.FC<AiExplanationCardProps> = ({ result, au
   const [copied, setCopied] = useState<boolean>(false);
   const [qaCopied, setQaCopied] = useState<boolean>(false);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
+  const [speechProgress, setSpeechProgress] = useState<TtsProgress | null>(null);
   const [customQuestion, setCustomQuestion] = useState<string>('');
   const [hasRequested, setHasRequested] = useState<boolean>(false);
 
@@ -53,9 +55,8 @@ export const AiExplanationCard: React.FC<AiExplanationCardProps> = ({ result, au
   const [isAnsweringQa, setIsAnsweringQa] = useState<boolean>(false);
   const [qaAnswer, setQaAnswer] = useState<QaAnswerItem | null>(null);
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const isAudioActiveRef = useRef<boolean>(false);
-  const audioSessionRef = useRef<number>(0);
+  const ttsControllerRef = useRef<TtsPlaybackController | null>(null);
+  const speechSessionRef = useRef<number>(0);
   const voiceSessionRef = useRef<VoiceSessionController | null>(null);
 
   const fetchAiExplanation = async (question?: string, langOverride?: ExplanationLanguage) => {
@@ -119,34 +120,12 @@ export const AiExplanationCard: React.FC<AiExplanationCardProps> = ({ result, au
   }, []);
 
   const stopAudio = () => {
-    isAudioActiveRef.current = false;
-    audioSessionRef.current = 0;
-
-    if (audioRef.current) {
-      try {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-        audioRef.current.onended = null;
-        audioRef.current.onerror = null;
-        audioRef.current.src = '';
-      } catch (e) {
-        // ignore
-      }
-      audioRef.current = null;
+    speechSessionRef.current += 1;
+    if (ttsControllerRef.current) {
+      ttsControllerRef.current.stop();
+      ttsControllerRef.current = null;
     }
-
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      try {
-        window.speechSynthesis.cancel();
-        if (window.speechSynthesis.paused) {
-          window.speechSynthesis.resume();
-        }
-        window.speechSynthesis.cancel();
-      } catch (e) {
-        // ignore
-      }
-    }
-
+    setSpeechProgress(null);
     setIsSpeaking(false);
   };
 
@@ -172,7 +151,7 @@ export const AiExplanationCard: React.FC<AiExplanationCardProps> = ({ result, au
     }
   };
 
-  // Speaks any given text in the exact language specified (Kannada, Hindi, English, etc.)
+  // Speaks the entire explanation or answer in the selected language (Kannada, Hindi, English, etc.)
   const playSpokenText = (text: string, langOverride?: string) => {
     if (isSpeaking && !text) {
       stopAudio();
@@ -182,105 +161,37 @@ export const AiExplanationCard: React.FC<AiExplanationCardProps> = ({ result, au
     stopAudio();
 
     const effectiveLang = langOverride || selectedLanguage;
+    if (!text || !text.trim()) return;
 
-    // Clean text for speech
-    const cleanText = text
-      .replace(/#{1,6}\s+/g, '')
-      .replace(/\*\*(.*?)\*\*/g, '$1')
-      .replace(/\*(.*?)\*/g, '$1')
-      .replace(/`([^`]+)`/g, '$1')
-      .replace(/[-*•]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+    const sessionId = speechSessionRef.current;
 
-    const excerpt = cleanText.length > 185 
-      ? cleanText.slice(0, 185).replace(/\s+\S*$/, '') + '...' 
-      : cleanText;
-
-    try {
-      const sessionId = Date.now();
-      audioSessionRef.current = sessionId;
-      isAudioActiveRef.current = true;
-      setIsSpeaking(true);
-
-      const audioUrl = `/api/tts?lang=${encodeURIComponent(effectiveLang)}&text=${encodeURIComponent(excerpt)}`;
-      const audio = new Audio(audioUrl);
-      audioRef.current = audio;
-
-      audio.onended = () => {
-        if (audioSessionRef.current !== sessionId) return;
-        setIsSpeaking(false);
-        audioRef.current = null;
-        isAudioActiveRef.current = false;
-      };
-
-      audio.onerror = () => {
-        // If stopped, NEVER resurrect speech
-        if (!isAudioActiveRef.current || audioSessionRef.current !== sessionId) {
-          setIsSpeaking(false);
-          return;
+    const controller = speakFullText({
+      text,
+      lang: effectiveLang,
+      rate: 1.0,
+      onStart: () => {
+        if (speechSessionRef.current === sessionId) {
+          setIsSpeaking(true);
         }
-        console.warn('TTS streaming failed, falling back to browser SpeechSynthesis');
-        if (typeof window !== 'undefined' && 'speechSynthesis' in window && isAudioActiveRef.current) {
-          const utterance = new SpeechSynthesisUtterance(excerpt);
-          utterance.lang = effectiveLang === 'kn' ? 'kn-IN' : effectiveLang === 'hi' ? 'hi-IN' : 'en-US';
-          utterance.rate = 0.95;
-          utterance.onend = () => {
-            if (audioSessionRef.current === sessionId) {
-              setIsSpeaking(false);
-              isAudioActiveRef.current = false;
-            }
-          };
-          utterance.onerror = () => {
-            if (audioSessionRef.current === sessionId) {
-              setIsSpeaking(false);
-              isAudioActiveRef.current = false;
-            }
-          };
-          if (isAudioActiveRef.current && audioSessionRef.current === sessionId) {
-            window.speechSynthesis.speak(utterance);
-          }
-        } else {
+      },
+      onProgress: (progress) => {
+        if (speechSessionRef.current === sessionId) {
+          setSpeechProgress(progress);
+        }
+      },
+      onEnd: () => {
+        if (speechSessionRef.current === sessionId) {
+          ttsControllerRef.current = null;
+          setSpeechProgress(null);
           setIsSpeaking(false);
         }
-      };
+      },
+    });
 
-      audio.play().catch((err) => {
-        // User clicked STOP or audio was aborted: DO NOT fall back to SpeechSynthesis
-        if (!isAudioActiveRef.current || audioSessionRef.current !== sessionId) {
-          return;
-        }
-        if (err && (err.name === 'AbortError' || err.code === 20)) {
-          return;
-        }
-        console.warn('Audio play prevented or failed:', err);
-        if (typeof window !== 'undefined' && 'speechSynthesis' in window && isAudioActiveRef.current) {
-          const utterance = new SpeechSynthesisUtterance(excerpt);
-          utterance.lang = effectiveLang === 'kn' ? 'kn-IN' : effectiveLang === 'hi' ? 'hi-IN' : 'en-US';
-          utterance.rate = 0.95;
-          utterance.onend = () => {
-            if (audioSessionRef.current === sessionId) {
-              setIsSpeaking(false);
-              isAudioActiveRef.current = false;
-            }
-          };
-          utterance.onerror = () => {
-            if (audioSessionRef.current === sessionId) {
-              setIsSpeaking(false);
-              isAudioActiveRef.current = false;
-            }
-          };
-          if (isAudioActiveRef.current && audioSessionRef.current === sessionId) {
-            window.speechSynthesis.speak(utterance);
-          }
-        } else {
-          setIsSpeaking(false);
-        }
-      });
-    } catch (e) {
-      console.error('Speech initialization error:', e);
-      setIsSpeaking(false);
-      isAudioActiveRef.current = false;
+    if (speechSessionRef.current === sessionId) {
+      ttsControllerRef.current = controller;
+    } else {
+      controller.stop();
     }
   };
 
@@ -580,20 +491,28 @@ export const AiExplanationCard: React.FC<AiExplanationCardProps> = ({ result, au
                     ? 'bg-amber-100 text-amber-900 border-amber-300 ring-2 ring-amber-400/50' 
                     : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
                 }`}
-                title={isSpeaking ? 'ಧ್ವನಿ ನಿಲ್ಲಿಸಿ (Stop audio)' : 'ಕನ್ನಡ ಧ್ವನಿ ವಿವರಣೆ ಆಲಿಸಿ (Listen in Kannada voice)'}
+                title={
+                  isSpeaking
+                    ? 'Stop full audio playback'
+                    : selectedLanguage === 'kn'
+                    ? 'ಸಂಪೂರ್ಣ ಕನ್ನಡ ಧ್ವನಿ ವಿವರಣೆ ಆಲಿಸಿ (Listen to full explanation)'
+                    : selectedLanguage === 'hi'
+                    ? 'पूरा हिंदी ऑडियो विवरण सुनें (Listen to full explanation)'
+                    : 'Listen to full explanation audio'
+                }
               >
                 {isSpeaking ? (
                   <>
                     <Square className="w-4 h-4 text-amber-700 fill-amber-700" />
                     <span className="text-[11px] font-bold text-amber-900 animate-pulse">
-                      {selectedLanguage === 'kn' ? 'ಧ್ವನಿ ನಿಲ್ಲಿಸಿ' : 'Stop'}
+                      {selectedLanguage === 'kn' ? 'ಧ್ವನಿ ನಿಲ್ಲಿಸಿ' : selectedLanguage === 'hi' ? 'रोकें (Stop)' : 'Stop'}
                     </span>
                   </>
                 ) : (
                   <>
                     <Volume2 className="w-4 h-4 text-emerald-700" />
                     <span className="text-[11px] font-semibold text-emerald-800">
-                      {selectedLanguage === 'kn' ? 'ಧ್ವನಿ ವಿವರಣೆ ಕೇಳಿ' : 'Listen'}
+                      {selectedLanguage === 'kn' ? 'ಧ್ವನಿ ವಿವರಣೆ ಕೇಳಿ' : selectedLanguage === 'hi' ? 'सुनें (Listen)' : 'Listen'}
                     </span>
                   </>
                 )}
@@ -701,23 +620,31 @@ export const AiExplanationCard: React.FC<AiExplanationCardProps> = ({ result, au
           <div className="space-y-4">
             {/* Audio Voice Player Notice Banner if speaking */}
             {isSpeaking && (
-              <div className="p-3 bg-emerald-100/90 border border-emerald-300 rounded-xl flex items-center justify-between text-xs text-emerald-950 animate-pulse">
-                <div className="flex items-center gap-2">
-                  <Volume2 className="w-4 h-4 text-emerald-700" />
-                  <span className="font-semibold">
-                    {selectedLanguage === 'kn' 
-                      ? 'ಧ್ವನಿ ವಿವರಣೆಯನ್ನು ನುಡಿಯಲಾಗುತ್ತಿದೆ...' 
-                      : 'Voice Assistant audio is playing...'}
+              <div className="p-3 bg-emerald-100/90 border border-emerald-300 rounded-xl flex items-center justify-between gap-3 text-xs text-emerald-950">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Volume2 className="w-4 h-4 text-emerald-700 shrink-0 animate-pulse" />
+                  <span className="font-semibold truncate">
+                    {selectedLanguage === 'kn'
+                      ? `ಸಂಪೂರ್ಣ ಕನ್ನಡ ಧ್ವನಿ ವಿವರಣೆ ನುಡಿಯಲಾಗುತ್ತಿದೆ${speechProgress ? ` (ಭಾಗ ${speechProgress.current}/${speechProgress.total})` : ''}...`
+                      : selectedLanguage === 'hi'
+                      ? `पूरा हिंदी ऑडियो विवरण चल रहा है${speechProgress ? ` (भाग ${speechProgress.current}/${speechProgress.total})` : ''}...`
+                      : `Playing full explanation audio${speechProgress ? ` (part ${speechProgress.current}/${speechProgress.total})` : ''}...`}
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={stopAudio}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs shadow-xs cursor-pointer transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs shadow-xs cursor-pointer transition-colors shrink-0"
                   title="Stop audio playback immediately"
                 >
                   <Square className="w-3.5 h-3.5 fill-current" />
-                  <span>{selectedLanguage === 'kn' ? 'ಧ್ವನಿ ನಿಲ್ಲಿಸಿ (Stop)' : 'Stop Audio'}</span>
+                  <span>
+                    {selectedLanguage === 'kn'
+                      ? 'ಧ್ವನಿ ನಿಲ್ಲಿಸಿ (Stop)'
+                      : selectedLanguage === 'hi'
+                      ? 'रोकें (Stop)'
+                      : 'Stop Audio'}
+                  </span>
                 </button>
               </div>
             )}

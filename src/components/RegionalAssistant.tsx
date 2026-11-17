@@ -8,6 +8,7 @@ import {
 } from '../data/regionalTranslations.ts';
 import { PlantSpeciesId, HealthStatus } from '../types/index.ts';
 import { startVoiceRecordingSession, VoiceSessionController } from '../services/voiceInputService.ts';
+import { speakFullText, TtsPlaybackController, TtsProgress } from '../services/ttsService.ts';
 import { 
   Languages, 
   Volume2, 
@@ -40,7 +41,8 @@ export const RegionalAssistant: React.FC<RegionalAssistantProps> = ({
 }) => {
   const [selectedLang, setSelectedLang] = useState<SupportedLanguage>('kn'); // Default to Kannada as requested in the PDF
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
-  const [speechRate, setSpeechRate] = useState<number>(0.95);
+  const [audioProgress, setAudioProgress] = useState<TtsProgress | null>(null);
+  const [speechRate, setSpeechRate] = useState<number>(1.0);
   const [userQuestion, setUserQuestion] = useState<string>('');
   const [isRecordingMic, setIsRecordingMic] = useState<boolean>(false);
   const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
@@ -51,9 +53,8 @@ export const RegionalAssistant: React.FC<RegionalAssistantProps> = ({
   >([]);
 
   const voiceSessionRef = useRef<VoiceSessionController | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const isAudioActiveRef = useRef<boolean>(false);
-  const audioSessionRef = useRef<number>(0);
+  const ttsControllerRef = useRef<TtsPlaybackController | null>(null);
+  const speechSessionRef = useRef<number>(0);
 
   const langMeta = SUPPORTED_LANGUAGES.find((l) => l.code === selectedLang) || SUPPORTED_LANGUAGES[0];
   const plantData = REGIONAL_PLANT_DATA[selectedLang]?.[speciesId] || REGIONAL_PLANT_DATA.en[speciesId];
@@ -67,38 +68,16 @@ export const RegionalAssistant: React.FC<RegionalAssistantProps> = ({
   };
 
   const handleStopAudio = () => {
-    isAudioActiveRef.current = false;
-    audioSessionRef.current = 0;
-
-    if (audioRef.current) {
-      try {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-        audioRef.current.onended = null;
-        audioRef.current.onerror = null;
-        audioRef.current.src = '';
-      } catch (e) {
-        // ignore
-      }
-      audioRef.current = null;
+    speechSessionRef.current += 1;
+    if (ttsControllerRef.current) {
+      ttsControllerRef.current.stop();
+      ttsControllerRef.current = null;
     }
-
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      try {
-        window.speechSynthesis.cancel();
-        if (window.speechSynthesis.paused) {
-          window.speechSynthesis.resume();
-        }
-        window.speechSynthesis.cancel();
-      } catch (e) {
-        // ignore
-      }
-    }
-
+    setAudioProgress(null);
     setIsPlayingAudio(false);
   };
 
-  // Text-To-Speech Handler supporting Kannada, Hindi, and regional voices in the exact language requested
+  // Text-To-Speech Handler supporting full diagnostic explanation across English, Kannada, Hindi, Telugu & Tamil
   const handleSpeak = (customText?: string, langOverride?: string) => {
     if (isPlayingAudio && !customText) {
       handleStopAudio();
@@ -111,102 +90,35 @@ export const RegionalAssistant: React.FC<RegionalAssistantProps> = ({
     if (!textToSpeak) return;
 
     const langToUse = langOverride || selectedLang;
+    const sessionId = speechSessionRef.current;
 
-    try {
-      const sessionId = Date.now();
-      audioSessionRef.current = sessionId;
-      isAudioActiveRef.current = true;
-      setIsPlayingAudio(true);
-
-      const audioUrl = `/api/tts?lang=${encodeURIComponent(langToUse)}&text=${encodeURIComponent(textToSpeak.slice(0, 185))}`;
-      const audio = new Audio(audioUrl);
-      audioRef.current = audio;
-
-      audio.onended = () => {
-        if (audioSessionRef.current !== sessionId) return;
-        setIsPlayingAudio(false);
-        audioRef.current = null;
-        isAudioActiveRef.current = false;
-      };
-
-      audio.onerror = () => {
-        // If user stopped, do not fallback to speech synthesis
-        if (!isAudioActiveRef.current || audioSessionRef.current !== sessionId) {
-          setIsPlayingAudio(false);
-          return;
+    const controller = speakFullText({
+      text: textToSpeak,
+      lang: langToUse,
+      rate: speechRate,
+      onStart: () => {
+        if (speechSessionRef.current === sessionId) {
+          setIsPlayingAudio(true);
         }
-        console.warn('TTS streaming failed, falling back to browser SpeechSynthesis');
-        if (typeof window !== 'undefined' && 'speechSynthesis' in window && isAudioActiveRef.current) {
-          const utterance = new SpeechSynthesisUtterance(textToSpeak);
-          const meta = SUPPORTED_LANGUAGES.find((l) => l.code === langToUse) || langMeta;
-          utterance.lang = meta.speechCode;
-          utterance.rate = speechRate;
-          const voices = window.speechSynthesis.getVoices();
-          const matchingVoice = voices.find((v) => v.lang.toLowerCase().includes(langToUse));
-          if (matchingVoice) {
-            utterance.voice = matchingVoice;
-          }
-          utterance.onend = () => {
-            if (audioSessionRef.current === sessionId) {
-              setIsPlayingAudio(false);
-              isAudioActiveRef.current = false;
-            }
-          };
-          utterance.onerror = () => {
-            if (audioSessionRef.current === sessionId) {
-              setIsPlayingAudio(false);
-              isAudioActiveRef.current = false;
-            }
-          };
-          if (isAudioActiveRef.current && audioSessionRef.current === sessionId) {
-            window.speechSynthesis.speak(utterance);
-          }
-        } else {
+      },
+      onProgress: (progress) => {
+        if (speechSessionRef.current === sessionId) {
+          setAudioProgress(progress);
+        }
+      },
+      onEnd: () => {
+        if (speechSessionRef.current === sessionId) {
+          ttsControllerRef.current = null;
+          setAudioProgress(null);
           setIsPlayingAudio(false);
         }
-      };
+      },
+    });
 
-      audio.play().catch((err) => {
-        // User clicked Stop button: NEVER fall back to SpeechSynthesis
-        if (!isAudioActiveRef.current || audioSessionRef.current !== sessionId) {
-          return;
-        }
-        if (err && (err.name === 'AbortError' || err.code === 20)) {
-          return;
-        }
-        if (typeof window !== 'undefined' && 'speechSynthesis' in window && isAudioActiveRef.current) {
-          const utterance = new SpeechSynthesisUtterance(textToSpeak);
-          const meta = SUPPORTED_LANGUAGES.find((l) => l.code === langToUse) || langMeta;
-          utterance.lang = meta.speechCode;
-          utterance.rate = speechRate;
-          const voices = window.speechSynthesis.getVoices();
-          const matchingVoice = voices.find((v) => v.lang.toLowerCase().includes(langToUse));
-          if (matchingVoice) {
-            utterance.voice = matchingVoice;
-          }
-          utterance.onend = () => {
-            if (audioSessionRef.current === sessionId) {
-              setIsPlayingAudio(false);
-              isAudioActiveRef.current = false;
-            }
-          };
-          utterance.onerror = () => {
-            if (audioSessionRef.current === sessionId) {
-              setIsPlayingAudio(false);
-              isAudioActiveRef.current = false;
-            }
-          };
-          if (isAudioActiveRef.current && audioSessionRef.current === sessionId) {
-            window.speechSynthesis.speak(utterance);
-          }
-        } else {
-          setIsPlayingAudio(false);
-        }
-      });
-    } catch (e) {
-      console.error('Regional TTS play error:', e);
-      setIsPlayingAudio(false);
-      isAudioActiveRef.current = false;
+    if (speechSessionRef.current === sessionId) {
+      ttsControllerRef.current = controller;
+    } else {
+      controller.stop();
     }
   };
 
@@ -434,23 +346,31 @@ export const RegionalAssistant: React.FC<RegionalAssistantProps> = ({
 
         {/* Active Audio Voice Player Notice Banner if playing */}
         {isPlayingAudio && (
-          <div className="p-3 bg-emerald-100/90 border border-emerald-300 rounded-xl flex items-center justify-between text-xs text-emerald-950">
-            <div className="flex items-center gap-2">
-              <Volume2 className="w-4 h-4 text-emerald-700 animate-pulse" />
-              <span className="font-semibold">
-                {selectedLang === 'kn' 
-                  ? 'ಧ್ವನಿ ವಿವರಣೆಯನ್ನು ನುಡಿಯಲಾಗುತ್ತಿದೆ...' 
-                  : 'Regional voice audio is playing...'}
+          <div className="p-3 bg-emerald-100/90 border border-emerald-300 rounded-xl flex items-center justify-between gap-3 text-xs text-emerald-950">
+            <div className="flex items-center gap-2 min-w-0">
+              <Volume2 className="w-4 h-4 text-emerald-700 animate-pulse shrink-0" />
+              <span className="font-semibold truncate">
+                {selectedLang === 'kn'
+                  ? `ಸಂಪೂರ್ಣ ಕನ್ನಡ ಧ್ವನಿ ವಿವರಣೆ ನುಡಿಯಲಾಗುತ್ತಿದೆ${audioProgress ? ` (ಭಾಗ ${audioProgress.current}/${audioProgress.total})` : ''}...`
+                  : selectedLang === 'hi'
+                  ? `पूरा हिंदी ऑडियो विवरण चल रहा है${audioProgress ? ` (भाग ${audioProgress.current}/${audioProgress.total})` : ''}...`
+                  : `Playing full regional voice audio${audioProgress ? ` (part ${audioProgress.current}/${audioProgress.total})` : ''}...`}
               </span>
             </div>
             <button
               type="button"
               onClick={handleStopAudio}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs shadow-xs cursor-pointer transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs shadow-xs cursor-pointer transition-colors shrink-0"
               title="Stop audio playback immediately"
             >
               <Square className="w-3.5 h-3.5 fill-current" />
-              <span>{selectedLang === 'kn' ? 'ಧ್ವನಿ ನಿಲ್ಲಿಸಿ (Stop)' : 'Stop Audio'}</span>
+              <span>
+                {selectedLang === 'kn'
+                  ? 'ಧ್ವನಿ ನಿಲ್ಲಿಸಿ (Stop)'
+                  : selectedLang === 'hi'
+                  ? 'रोकें (Stop)'
+                  : 'Stop Audio'}
+              </span>
             </button>
           </div>
         )}

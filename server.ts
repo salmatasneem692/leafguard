@@ -90,32 +90,85 @@ app.get('/api/metrics', (_req, res) => {
 });
 
 
-// API endpoint for Audio Text-To-Speech streaming (Kannada, Hindi, English)
-app.get('/api/tts', async (req, res) => {
-  try {
-    const rawText = (req.query.text as string) || '';
-    const lang = ((req.query.lang as string) || 'kn').toLowerCase();
+// Helper to clean and split text into <= 180-char chunks for Google Translate TTS
+function cleanAndSplitServerTtsChunks(rawText: string, maxLen = 180): string[] {
+  const cleaned = rawText
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/\s*#{1,6}\s+/g, '. ')
+    .replace(/^\s*(\d+)\.\s+/gm, '$1, ')
+    .replace(/^\s*[-*•]\s+/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 
-    if (!rawText.trim()) {
-      return res.status(400).json({ error: 'Text query parameter is required' });
+  if (!cleaned) return [];
+  if (cleaned.length <= maxLen) return [cleaned];
+
+  const sentences = cleaned.split(/(?<=[.!?।॥])\s+/).filter(Boolean);
+  const chunks: string[] = [];
+  let current = '';
+
+  const pushWords = (segment: string) => {
+    let wordBuf = '';
+    for (const word of segment.split(/\s+/).filter(Boolean)) {
+      if (word.length > maxLen) {
+        if (wordBuf) {
+          chunks.push(wordBuf);
+          wordBuf = '';
+        }
+        for (let i = 0; i < word.length; i += maxLen) {
+          chunks.push(word.slice(i, i + maxLen));
+        }
+      } else if (!wordBuf) {
+        wordBuf = word;
+      } else if (wordBuf.length + 1 + word.length <= maxLen) {
+        wordBuf = `${wordBuf} ${word}`;
+      } else {
+        chunks.push(wordBuf);
+        wordBuf = word;
+      }
     }
+    if (wordBuf) chunks.push(wordBuf);
+  };
 
-    // Clean markdown and non-verbal symbols
-    const cleanText = rawText
-      .replace(/#{1,6}\s+/g, '')
-      .replace(/\*\*(.*?)\*\*/g, '$1')
-      .replace(/\*(.*?)\*/g, '$1')
-      .replace(/`([^`]+)`/g, '$1')
-      .replace(/[-*•]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+  for (const sentence of sentences) {
+    if (sentence.length > maxLen) {
+      if (current) {
+        chunks.push(current);
+        current = '';
+      }
+      pushWords(sentence);
+    } else if (!current) {
+      current = sentence;
+    } else if (current.length + 1 + sentence.length <= maxLen) {
+      current = `${current} ${sentence}`;
+    } else {
+      chunks.push(current);
+      current = sentence;
+    }
+  }
+  if (current) chunks.push(current);
 
-    // Limit chunk to under 190 characters per Google TTS requirement
-    const textChunk = cleanText.length > 190 
-      ? cleanText.slice(0, 190).replace(/\s+\S*$/, '') 
-      : cleanText;
+  return chunks.filter((c) => /[\p{L}\p{N}]/u.test(c));
+}
 
-    const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${encodeURIComponent(lang)}&client=tw-ob&q=${encodeURIComponent(textChunk)}`;
+async function handleTtsRequest(rawText: string, rawLang: string, res: express.Response) {
+  const lang = (rawLang || 'kn').trim().toLowerCase().split(/[-_]/)[0] || 'kn';
+  if (!rawText || !rawText.trim()) {
+    return res.status(400).json({ error: 'Text parameter is required' });
+  }
+
+  const chunks = cleanAndSplitServerTtsChunks(rawText, 180);
+  if (chunks.length === 0) {
+    return res.status(400).json({ error: 'No speakable text found' });
+  }
+
+  const buffers: Buffer[] = [];
+  for (const chunk of chunks) {
+    const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${encodeURIComponent(lang)}&client=tw-ob&q=${encodeURIComponent(chunk)}`;
     const audioRes = await fetch(ttsUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -126,14 +179,36 @@ app.get('/api/tts', async (req, res) => {
       return res.status(audioRes.status).send('TTS service unavailable');
     }
 
-    const audioBuffer = await audioRes.arrayBuffer();
-    res.set({
-      'Content-Type': 'audio/mpeg',
-      'Cache-Control': 'public, max-age=86400',
-    });
-    res.send(Buffer.from(audioBuffer));
+    const arrayBuf = await audioRes.arrayBuffer();
+    buffers.push(Buffer.from(arrayBuf));
+  }
+
+  res.set({
+    'Content-Type': 'audio/mpeg',
+    'Cache-Control': 'public, max-age=86400',
+  });
+  return res.send(Buffer.concat(buffers));
+}
+
+// API endpoint for Audio Text-To-Speech streaming (Kannada, Hindi, English, Telugu, Tamil)
+app.get('/api/tts', async (req, res) => {
+  try {
+    const rawText = (req.query.text as string) || '';
+    const lang = (req.query.lang as string) || 'kn';
+    await handleTtsRequest(rawText, lang, res);
   } catch (err: any) {
     console.error('TTS generation error:', err);
+    res.status(500).json({ error: 'Failed to generate voice audio' });
+  }
+});
+
+app.post('/api/tts', async (req, res) => {
+  try {
+    const rawText = (req.body?.text as string) || '';
+    const lang = (req.body?.lang as string) || 'kn';
+    await handleTtsRequest(rawText, lang, res);
+  } catch (err: any) {
+    console.error('TTS POST generation error:', err);
     res.status(500).json({ error: 'Failed to generate voice audio' });
   }
 });
