@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Cpu, Menu, X } from 'lucide-react';
 
-export type NavTabId = 'home' | 'dashboard' | 'identify' | 'disease' | 'library' | 'about';
+export type NavTabId = 'home' | 'dashboard' | 'identify' | 'disease' | 'library' | 'about' | 'team';
 
 interface NavbarProps {
   activeTab: NavTabId;
@@ -18,6 +18,7 @@ const NAV_ITEMS: Array<{ id: NavTabId; label: string }> = [
   { id: 'disease', label: 'Disease Detection' },
   { id: 'library', label: 'Plant Library' },
   { id: 'about', label: 'About' },
+  { id: 'team', label: 'Meet Our Team' },
 ];
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -79,7 +80,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
 
           {/* Zone 2: Responsive Single-Line Navigation Links */}
-          <nav className="hidden lg:flex items-center gap-1.5">
+          <nav className="hidden lg:flex items-center gap-1">
             {NAV_ITEMS.map((item) => {
               const isActive = activeTab === item.id;
               return (
@@ -87,7 +88,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   key={item.id}
                   type="button"
                   onClick={() => handleSelectTab(item.id)}
-                  className={`px-3 py-2 text-sm font-medium rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                  className={`px-2.5 py-2 text-xs xl:text-sm font-medium rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer flex items-center gap-1 ${
                     isActive
                       ? 'bg-[#E8F5EC] text-[#123D2A] font-semibold'
                       : 'text-[#18251E]/75 hover:text-[#123D2A] hover:bg-[#E8F5EC]/50'

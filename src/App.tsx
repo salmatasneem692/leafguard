@@ -10,6 +10,7 @@ import { DashboardView } from './components/DashboardView.tsx';
 import { LeafDiagnosticWorkspace } from './components/LeafDiagnosticWorkspace.tsx';
 import { MedicinalCompendium } from './components/MedicinalCompendium.tsx';
 import { AboutView } from './components/AboutView.tsx';
+import { MeetOurTeamView } from './components/MeetOurTeamView.tsx';
 import { CameraModal } from './components/CameraModal.tsx';
 import { ModelConnectModal } from './components/ModelConnectModal.tsx';
 
@@ -405,6 +406,18 @@ export default function App() {
               <AboutView />
             </motion.div>
           )}
+
+          {activeTab === 'team' && (
+            <motion.div
+              key="team"
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={prefersReducedMotion ? undefined : { opacity: 0, y: -8 }}
+              transition={{ duration: 0.25 }}
+            >
+              <MeetOurTeamView onBackToHome={() => handleNavigate('dashboard')} />
+            </motion.div>
+          )}
         </AnimatePresence>
       </main>
 
@@ -452,6 +465,13 @@ export default function App() {
               className="hover:text-[#16A36A] transition-colors cursor-pointer"
             >
               Architecture
+            </button>
+            <button
+              type="button"
+              onClick={() => handleNavigate('team')}
+              className="hover:text-[#16A36A] transition-colors cursor-pointer"
+            >
+              Meet Our Team
             </button>
           </div>
         </div>

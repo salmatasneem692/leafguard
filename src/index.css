@@ -31,3 +31,134 @@
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
 }
+
+@keyframes teamCardEnter {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes teamCardFloat {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -4px, 0);
+  }
+}
+
+@keyframes teamIconFloat {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -3px, 0);
+  }
+}
+
+@keyframes teamBannerLeafDriftA {
+  0% {
+    transform: translate3d(-6%, 4px, 0);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.6;
+  }
+  50% {
+    transform: translate3d(52%, -5px, 0);
+    opacity: 0.7;
+  }
+  88% {
+    opacity: 0.55;
+  }
+  100% {
+    transform: translate3d(106%, 4px, 0);
+    opacity: 0;
+  }
+}
+
+@keyframes teamBannerLeafDriftB {
+  0% {
+    transform: translate3d(106%, -4px, 0);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.55;
+  }
+  50% {
+    transform: translate3d(48%, 5px, 0);
+    opacity: 0.65;
+  }
+  88% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: translate3d(-6%, -3px, 0);
+    opacity: 0;
+  }
+}
+
+@keyframes teamLeafTumble {
+  0%,
+  100% {
+    transform: rotate(-18deg) scale(0.95);
+  }
+  50% {
+    transform: rotate(22deg) scale(1.06);
+  }
+}
+
+.team-card-enter {
+  animation: teamCardEnter 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.team-card-float {
+  animation: teamCardFloat 6.5s ease-in-out 0.6s infinite;
+  will-change: transform;
+}
+
+.team-icon-float {
+  animation: teamIconFloat 3.6s ease-in-out infinite;
+  will-change: transform;
+}
+
+.team-icon-float-delayed {
+  animation: teamIconFloat 3.6s ease-in-out 1.2s infinite;
+  will-change: transform;
+}
+
+.team-leaf-drift-a {
+  animation: teamBannerLeafDriftA 13s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.team-leaf-drift-b {
+  animation: teamBannerLeafDriftB 15s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.team-leaf-tumble {
+  animation: teamLeafTumble 4.5s ease-in-out infinite;
+  transform-origin: center;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .team-card-enter,
+  .team-card-float,
+  .team-icon-float,
+  .team-icon-float-delayed,
+  .team-leaf-drift-a,
+  .team-leaf-drift-b,
+  .team-leaf-tumble {
+    animation: none !important;
+    transform: none !important;
+  }
+}
